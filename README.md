@@ -1,6 +1,5 @@
 # Meaning Preservation Annotation App
 
-This is the updated Streamlit + Supabase annotation interface using the revised 10-step decision tree.
 
 ## Files for GitHub
 
