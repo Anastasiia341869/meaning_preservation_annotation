@@ -29,12 +29,12 @@ The meaning may be unclear if the post depends on missing context, such as a pre
 """,
         "options": [
             {
-                "label": "No — the original meaning cannot be judged confidently",
+                "label": "No: the original meaning cannot be judged confidently",
                 "outcome": "MAYBE",
                 "reason": "Context unclear",
             },
             {
-                "label": "Yes — the original is understandable enough",
+                "label": "Yes: the original is understandable enough",
                 "outcome": "CONTINUE",
                 "reason": "Original understandable",
             },
@@ -63,17 +63,17 @@ The meaning changes from an accusation to an admission. This is **NO: Core meani
 """,
         "options": [
             {
-                "label": "No — the main message, event, participant or outcome has changed",
+                "label": "No: the main message, event, participant or outcome has changed",
                 "outcome": "NO",
                 "reason": "Core meaning changed",
             },
             {
-                "label": "Uncertain — the core meaning may have changed, but I am not sure",
+                "label": "Maybe: the core meaning may have changed, but I am not sure",
                 "outcome": "MAYBE",
                 "reason": "Core meaning unclear",
             },
             {
-                "label": "Yes — the core meaning is preserved",
+                "label": "Yes: the core meaning is preserved",
                 "outcome": "CONTINUE",
                 "reason": "Core meaning preserved",
             },
@@ -95,17 +95,17 @@ The emotion and intensity have changed. This is **NO: Emotion or polarity change
 """,
         "options": [
             {
-                "label": "No — emotion, polarity or intensity clearly changes the meaning",
+                "label": "No: emotion, polarity or intensity clearly changes the meaning",
                 "outcome": "NO",
                 "reason": "Emotion or polarity changed",
             },
             {
-                "label": "Uncertain — there may be a small emotional change",
+                "label": "Maybe: there may be a small emotional change",
                 "outcome": "MAYBE",
                 "reason": "Emotional shift unclear",
             },
             {
-                "label": "Yes — the emotional meaning is preserved",
+                "label": "Yes: the emotional meaning is preserved",
                 "outcome": "CONTINUE",
                 "reason": "Emotion preserved",
             },
@@ -134,17 +134,17 @@ The strong frustration has been weakened too much. This is **MAYBE: Informal mea
 """,
         "options": [
             {
-                "label": "No — sarcasm, humour, slang, profanity or figurative meaning is misunderstood or omitted",
+                "label": "No: sarcasm, humour, slang, profanity or figurative meaning is misunderstood or omitted",
                 "outcome": "NO",
                 "reason": "Non-literal or informal meaning lost",
             },
             {
-                "label": "Uncertain — some tone or humour may be lost, but the main message may still be preserved",
+                "label": "Maybe: some tone or humour may be lost, but the main message may still be preserved",
                 "outcome": "MAYBE",
                 "reason": "Tone or humour partly lost",
             },
             {
-                "label": "Yes — the intended meaning is preserved or accurately explained",
+                "label": "Yes: the intended meaning is preserved or accurately explained",
                 "outcome": "CONTINUE",
                 "reason": "Non-literal or informal meaning preserved",
             },
@@ -171,17 +171,17 @@ The emoji meaning is explained clearly. This is acceptable.
 """,
         "options": [
             {
-                "label": "No — an emoji, hashtag or social media cue changes the meaning",
+                "label": "No: an emoji, hashtag or social media cue changes the meaning",
                 "outcome": "NO",
                 "reason": "Social media meaning changed",
             },
             {
-                "label": "Uncertain — the effect of the cue is unclear",
+                "label": "Maybe: the effect of the cue is unclear",
                 "outcome": "MAYBE",
                 "reason": "Social media cue unclear",
             },
             {
-                "label": "Yes — the cue is preserved, safely removed or clearly explained",
+                "label": "Yes: the cue is preserved, safely removed or clearly explained",
                 "outcome": "CONTINUE",
                 "reason": "Social media cues preserved",
             },
@@ -210,17 +210,17 @@ The simplified version adds an unsupported motive. This is **NO: Material omissi
 """,
         "options": [
             {
-                "label": "Yes — important information is removed or unsupported meaning is added",
+                "label": "Yes: important information is removed or unsupported meaning is added",
                 "outcome": "NO",
                 "reason": "Material omission or unsupported addition",
             },
             {
-                "label": "Uncertain — the effect of the change is unclear",
+                "label": "Maybe: the effect of the change is unclear",
                 "outcome": "MAYBE",
                 "reason": "Information change unclear",
             },
             {
-                "label": "No — only non-essential details are removed and additions are clearly supported",
+                "label": "No: only non-essential details are removed and additions are clearly supported",
                 "outcome": "YES",
                 "reason": "Meaning preserved",
             },
@@ -661,59 +661,16 @@ def render_post_navigation(
     email: str,
     prefix: str,
 ) -> None:
-    """Render reliable navigation controls. The jump control only moves when the Jump button is pressed."""
+    """Render a single previous-post button at the bottom of the page."""
     current_post_id = posts[idx]["post_id"] if posts else ""
-    nav_left, nav_mid, nav_right, nav_unfinished = st.columns([1, 1.5, 1, 1.4])
-
-    with nav_left:
-        st.button(
-            "← Previous post",
-            disabled=idx <= 0,
-            use_container_width=True,
-            key=f"{prefix}_previous_{email}_{current_post_id}_{idx}",
-            on_click=set_current_post_index,
-            args=(idx - 1, total_posts),
-        )
-
-    with nav_mid:
-        st.markdown(
-            f"<div style='text-align:center'><strong>Post {idx + 1} of {total_posts}</strong><br>"
-            f"Status: {post_status(current_post_id, progress_by_post)}</div>",
-            unsafe_allow_html=True,
-        )
-
-    with nav_right:
-        st.button(
-            "Next post →",
-            disabled=idx >= total_posts - 1,
-            use_container_width=True,
-            key=f"{prefix}_next_{email}_{current_post_id}_{idx}",
-            on_click=set_current_post_index,
-            args=(idx + 1, total_posts),
-        )
-
-    with nav_unfinished:
-        next_unfinished = find_next_unfinished_index(posts, progress_by_post, idx + 1)
-        st.button(
-            "Next unfinished",
-            use_container_width=True,
-            key=f"{prefix}_unfinished_{email}_{current_post_id}_{idx}",
-            on_click=set_current_post_index,
-            args=(next_unfinished, total_posts),
-        )
-
-    with st.form(key=f"{prefix}_jump_form_{email}_{current_post_id}_{idx}"):
-        jump_number = st.number_input(
-            "Jump to post number",
-            min_value=1,
-            max_value=max(total_posts, 1),
-            value=idx + 1,
-            step=1,
-        )
-        jump_submitted = st.form_submit_button("Jump")
-        if jump_submitted:
-            set_current_post_index(int(jump_number) - 1, total_posts)
-            st.rerun()
+    st.button(
+        "← Previous post",
+        disabled=idx <= 0,
+        use_container_width=False,
+        key=f"{prefix}_previous_{email}_{current_post_id}_{idx}",
+        on_click=set_current_post_index,
+        args=(idx - 1, total_posts),
+    )
 
 
 def annotator_page():
@@ -747,9 +704,6 @@ def annotator_page():
     st.progress(completed_count / total_posts if total_posts else 0)
     st.caption(f"{completed_count} of {total_posts} posts completed for {email}.")
 
-    with st.expander("Your YES / NO / MAYBE summary", expanded=False):
-        own_progress_df = pd.DataFrame(progress)
-        st.dataframe(make_label_summary(own_progress_df), hide_index=True, use_container_width=True)
 
     if "current_post_index" not in st.session_state:
         st.session_state["current_post_index"] = find_next_unfinished_index(posts, progress_by_post, 0)
@@ -758,9 +712,6 @@ def annotator_page():
     idx = st.session_state["current_post_index"]
     current_post = posts[idx]
     current_progress = progress_by_post.get(current_post["post_id"], {})
-
-    st.divider()
-    render_post_navigation(idx, total_posts, posts, progress_by_post, email, prefix="top")
 
     st.markdown(f"### Current post ID: `{current_post['post_id']}`")
     left, right = st.columns(2)
