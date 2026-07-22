@@ -1,24 +1,21 @@
-# Meaning Preservation Annotation App — v3.2
+# Meaning Preservation Annotation App — v3.3
 
-This version includes two small interface fixes:
+This version keeps the inter-annotator agreement by-post table and adds a compact visual overview table like the earlier summary table.
 
-1. Annotators now have both bottom navigation buttons:
-   - Previous post
-   - Next post
+## Dashboard changes
 
-   This lets an annotator return to a previous post and then move forward again without re-annotating the post.
+The dashboard now shows:
 
-2. The dashboard now has an inter-annotator agreement table by post.
+1. YES / NO / MAYBE by annotator email.
+2. Inter-annotator agreement overview:
+   - Full agreement
+   - Majority agreement
+   - No majority
+   - Not enough annotations yet
+3. Inter-annotator agreement by post, showing how many annotators chose YES, NO and MAYBE for each post.
 
-   Instead of only showing the total number of YES / NO / MAYBE labels overall, it now shows how many annotators selected YES, NO and MAYBE for each individual post.
+The old label `Tie` is now displayed as `No majority`.
 
-   Example:
+## Update instructions
 
-   Post ID | YES | NO | MAYBE | Total annotations | Majority label | Agreement %
-   1       | 2   | 1  | 0     | 3                 | YES            | 66.7
-
-## How to update
-
-Upload the new `app.py` to GitHub, commit the change, then reboot the Streamlit app.
-
-You do not need to change Supabase for this update.
+Upload the new `app.py` to GitHub, commit the change, then reboot the Streamlit app. You do not need to change Supabase.

@@ -584,7 +584,7 @@ def make_post_agreement_summary(progress_df: pd.DataFrame, posts_df: pd.DataFram
         max_count = max(counts.values())
         winners = [label for label, count in counts.items() if count == max_count]
         if len(winners) > 1:
-            return "Tie"
+            return "No majority"
         return winners[0]
 
     def agreement_percent(row: pd.Series) -> float:
@@ -596,6 +596,36 @@ def make_post_agreement_summary(progress_df: pd.DataFrame, posts_df: pd.DataFram
     out["Majority label"] = out.apply(majority_label, axis=1)
     out["Agreement %"] = out.apply(agreement_percent, axis=1)
     return out[columns].sort_values("Post number")
+
+
+def make_agreement_overview(agreement_by_post: pd.DataFrame) -> pd.DataFrame:
+    """Create a compact visual overview of inter-annotator agreement."""
+    columns = ["Agreement category", "Number of posts", "Percentage"]
+    if agreement_by_post.empty:
+        return pd.DataFrame(columns=columns)
+
+    df = agreement_by_post.copy()
+    total_posts = len(df)
+
+    not_enough = df["Total annotations"].lt(2).sum()
+    annotated = df["Total annotations"].ge(2)
+    full = (annotated & df["Agreement %"].eq(100.0)).sum()
+    no_majority = (annotated & df["Majority label"].eq("No majority")).sum()
+    majority = (annotated & df["Agreement %"].lt(100.0) & ~df["Majority label"].eq("No majority")).sum()
+
+    rows = [
+        ("Full agreement", int(full)),
+        ("Majority agreement", int(majority)),
+        ("No majority", int(no_majority)),
+        ("Not enough annotations yet", int(not_enough)),
+    ]
+    return pd.DataFrame(
+        {
+            "Agreement category": [r[0] for r in rows],
+            "Number of posts": [r[1] for r in rows],
+            "Percentage": [round((r[1] / total_posts * 100), 1) if total_posts else 0 for r in rows],
+        }
+    )
 
 
 def build_export() -> bytes:
@@ -627,12 +657,14 @@ def build_export() -> bytes:
         rows = rows.merge(pivot_reasons, how="left", on=["annotator_email", "post_id"])
 
     agreement_by_post = make_post_agreement_summary(progress, posts)
+    agreement_overview = make_agreement_overview(agreement_by_post)
     by_annotator = make_by_annotator_summary(progress)
 
     output = BytesIO()
     with pd.ExcelWriter(output, engine="xlsxwriter") as writer:
         rows.to_excel(writer, sheet_name="Annotations", index=False)
         steps.rename(columns={"annotator_id": "annotator_email"}).to_excel(writer, sheet_name="Step answers", index=False)
+        agreement_overview.to_excel(writer, sheet_name="Agreement overview", index=False)
         agreement_by_post.to_excel(writer, sheet_name="Agreement by post", index=False)
         by_annotator.to_excel(writer, sheet_name="By annotator", index=False)
 
@@ -647,6 +679,8 @@ def build_export() -> bytes:
                 data = rows
             elif sheet_name == "Step answers":
                 data = steps
+            elif sheet_name == "Agreement overview":
+                data = agreement_overview
             elif sheet_name == "Agreement by post":
                 data = agreement_by_post
             else:
@@ -979,10 +1013,15 @@ def admin_page():
         by_annotator = make_by_annotator_summary(progress)
         st.dataframe(by_annotator, hide_index=True, use_container_width=True)
 
-        st.subheader("Inter-annotator agreement by post")
-        st.write("This table shows how many annotators chose YES, NO and MAYBE for each post.")
+        st.subheader("Inter-annotator agreement overview")
+        st.write("This compact table helps you see the overall level of agreement across posts.")
         posts_df = pd.DataFrame(load_posts())
         agreement_by_post = make_post_agreement_summary(progress, posts_df)
+        agreement_overview = make_agreement_overview(agreement_by_post)
+        st.dataframe(agreement_overview, hide_index=True, use_container_width=True)
+
+        st.subheader("Inter-annotator agreement by post")
+        st.write("This table shows how many annotators chose YES, NO and MAYBE for each individual post.")
         st.dataframe(agreement_by_post, hide_index=True, use_container_width=True)
 
         if not by_annotator.empty:
@@ -1032,7 +1071,7 @@ def admin_page():
 
     with tab_export:
         st.subheader("Export results")
-        st.write("Download all annotations, step answers, the inter-annotator agreement table and by-annotator summaries as an Excel workbook.")
+        st.write("Download all annotations, step answers, the inter-annotator agreement overview, the by-post agreement table and by-annotator summaries as an Excel workbook.")
         export_bytes = build_export()
         st.download_button(
             "Download XLSX results",
