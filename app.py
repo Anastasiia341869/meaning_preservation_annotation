@@ -518,6 +518,86 @@ def make_by_annotator_summary(progress_df: pd.DataFrame) -> pd.DataFrame:
     return out[["Annotator email", "YES", "NO", "MAYBE", "Total completed", "Total started"]].sort_values("Annotator email")
 
 
+def make_post_agreement_summary(progress_df: pd.DataFrame, posts_df: pd.DataFrame) -> pd.DataFrame:
+    """Show, for each post, how many annotators selected YES, NO or MAYBE."""
+    columns = [
+        "Post number",
+        "Post ID",
+        "YES",
+        "NO",
+        "MAYBE",
+        "Total annotations",
+        "Majority label",
+        "Agreement %",
+    ]
+
+    if posts_df.empty:
+        return pd.DataFrame(columns=columns)
+
+    base = posts_df.copy()
+    if "display_order" not in base.columns:
+        base["display_order"] = range(1, len(base) + 1)
+    base = base[["display_order", "post_id"]].rename(
+        columns={"display_order": "Post number", "post_id": "Post ID"}
+    )
+
+    if progress_df.empty:
+        for label in LABELS:
+            base[label] = 0
+        base["Total annotations"] = 0
+        base["Majority label"] = "No annotations yet"
+        base["Agreement %"] = 0.0
+        return base[columns]
+
+    completed = progress_df[progress_df["completed"].eq(True)].copy()
+    if completed.empty:
+        for label in LABELS:
+            base[label] = 0
+        base["Total annotations"] = 0
+        base["Majority label"] = "No annotations yet"
+        base["Agreement %"] = 0.0
+        return base[columns]
+
+    pivot = completed.pivot_table(
+        index="post_id",
+        columns="final_label",
+        values="annotator_id",
+        aggfunc="count",
+        fill_value=0,
+    ).reset_index()
+    for label in LABELS:
+        if label not in pivot.columns:
+            pivot[label] = 0
+
+    out = base.merge(pivot[["post_id", *LABELS]], how="left", left_on="Post ID", right_on="post_id")
+    out = out.drop(columns=["post_id"], errors="ignore")
+    for label in LABELS:
+        out[label] = out[label].fillna(0).astype(int)
+
+    out["Total annotations"] = out[LABELS].sum(axis=1).astype(int)
+
+    def majority_label(row: pd.Series) -> str:
+        total = int(row["Total annotations"])
+        if total == 0:
+            return "No annotations yet"
+        counts = {label: int(row[label]) for label in LABELS}
+        max_count = max(counts.values())
+        winners = [label for label, count in counts.items() if count == max_count]
+        if len(winners) > 1:
+            return "Tie"
+        return winners[0]
+
+    def agreement_percent(row: pd.Series) -> float:
+        total = int(row["Total annotations"])
+        if total == 0:
+            return 0.0
+        return round(max(int(row[label]) for label in LABELS) / total * 100, 1)
+
+    out["Majority label"] = out.apply(majority_label, axis=1)
+    out["Agreement %"] = out.apply(agreement_percent, axis=1)
+    return out[columns].sort_values("Post number")
+
+
 def build_export() -> bytes:
     client = get_supabase_client()
     posts = pd.DataFrame(safe_execute(client.table("posts").select("*").order("display_order"), "Could not export posts.").data or [])
@@ -546,14 +626,14 @@ def build_export() -> bytes:
         rows = rows.merge(pivot_decisions, how="left", on=["annotator_email", "post_id"])
         rows = rows.merge(pivot_reasons, how="left", on=["annotator_email", "post_id"])
 
-    overall = make_label_summary(progress)
+    agreement_by_post = make_post_agreement_summary(progress, posts)
     by_annotator = make_by_annotator_summary(progress)
 
     output = BytesIO()
     with pd.ExcelWriter(output, engine="xlsxwriter") as writer:
         rows.to_excel(writer, sheet_name="Annotations", index=False)
         steps.rename(columns={"annotator_id": "annotator_email"}).to_excel(writer, sheet_name="Step answers", index=False)
-        overall.to_excel(writer, sheet_name="Overall summary", index=False)
+        agreement_by_post.to_excel(writer, sheet_name="Agreement by post", index=False)
         by_annotator.to_excel(writer, sheet_name="By annotator", index=False)
 
         workbook = writer.book
@@ -567,8 +647,8 @@ def build_export() -> bytes:
                 data = rows
             elif sheet_name == "Step answers":
                 data = steps
-            elif sheet_name == "Overall summary":
-                data = overall
+            elif sheet_name == "Agreement by post":
+                data = agreement_by_post
             else:
                 data = by_annotator
             for col_num, value in enumerate(data.columns):
@@ -577,13 +657,6 @@ def build_export() -> bytes:
             ws.autofilter(0, 0, max(len(data), 1), max(len(data.columns) - 1, 0))
             ws.set_column(0, max(len(data.columns) - 1, 0), 24, wrap)
 
-        if not overall.empty:
-            ws = writer.sheets["Overall summary"]
-            chart = workbook.add_chart({"type": "column"})
-            chart.add_series({"name": "Overall", "categories": "='Overall summary'!$A$2:$A$4", "values": "='Overall summary'!$B$2:$B$4", "data_labels": {"value": True}})
-            chart.set_title({"name": "Overall YES / NO / MAYBE"})
-            chart.set_legend({"none": True})
-            ws.insert_chart("E2", chart)
 
     return output.getvalue()
 
@@ -661,16 +734,27 @@ def render_post_navigation(
     email: str,
     prefix: str,
 ) -> None:
-    """Render a single previous-post button at the bottom of the page."""
+    """Render bottom navigation buttons for moving between posts."""
     current_post_id = posts[idx]["post_id"] if posts else ""
-    st.button(
-        "← Previous post",
-        disabled=idx <= 0,
-        use_container_width=False,
-        key=f"{prefix}_previous_{email}_{current_post_id}_{idx}",
-        on_click=set_current_post_index,
-        args=(idx - 1, total_posts),
-    )
+    left, right = st.columns(2)
+    with left:
+        st.button(
+            "← Previous post",
+            disabled=idx <= 0,
+            use_container_width=True,
+            key=f"{prefix}_previous_{email}_{current_post_id}_{idx}",
+            on_click=set_current_post_index,
+            args=(idx - 1, total_posts),
+        )
+    with right:
+        st.button(
+            "Next post →",
+            disabled=idx >= total_posts - 1,
+            use_container_width=True,
+            key=f"{prefix}_next_{email}_{current_post_id}_{idx}",
+            on_click=set_current_post_index,
+            args=(idx + 1, total_posts),
+        )
 
 
 def annotator_page():
@@ -735,6 +819,7 @@ def annotator_page():
             st.error(f"Final label already saved: NO — {reason}")
         else:
             st.warning(f"Final label already saved: MAYBE — {reason}")
+        st.info("This post is already saved. You can move to the previous or next post without annotating it again.")
         with st.expander("Change this annotation"):
             st.write("This will delete your saved answers for this post only and let you annotate it again.")
             if st.button("Restart this post", type="secondary"):
@@ -894,20 +979,11 @@ def admin_page():
         by_annotator = make_by_annotator_summary(progress)
         st.dataframe(by_annotator, hide_index=True, use_container_width=True)
 
-        st.subheader("Common YES / NO / MAYBE table")
-        overall = make_label_summary(progress)
-        st.dataframe(overall, hide_index=True, use_container_width=True)
-
-        if not progress.empty:
-            completed = progress[progress["completed"].eq(True)]
-            counts = completed["final_label"].value_counts().reindex(LABELS, fill_value=0) if not completed.empty else pd.Series([0, 0, 0], index=LABELS)
-            total_completed = int(counts.sum())
-            c1, c2, c3, c4 = st.columns(4)
-            c1.metric("YES", int(counts["YES"]))
-            c2.metric("NO", int(counts["NO"]))
-            c3.metric("MAYBE", int(counts["MAYBE"]))
-            c4.metric("Completed annotations", total_completed)
-            st.bar_chart(pd.DataFrame({"Number": [int(counts[label]) for label in LABELS]}, index=LABELS))
+        st.subheader("Inter-annotator agreement by post")
+        st.write("This table shows how many annotators chose YES, NO and MAYBE for each post.")
+        posts_df = pd.DataFrame(load_posts())
+        agreement_by_post = make_post_agreement_summary(progress, posts_df)
+        st.dataframe(agreement_by_post, hide_index=True, use_container_width=True)
 
         if not by_annotator.empty:
             st.subheader("Individual annotator tables")
@@ -956,7 +1032,7 @@ def admin_page():
 
     with tab_export:
         st.subheader("Export results")
-        st.write("Download all annotations, step answers, the common summary and by-annotator summaries as an Excel workbook.")
+        st.write("Download all annotations, step answers, the inter-annotator agreement table and by-annotator summaries as an Excel workbook.")
         export_bytes = build_export()
         st.download_button(
             "Download XLSX results",
